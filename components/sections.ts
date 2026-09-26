@@ -66,6 +66,16 @@ export const SECTIONS: Section[] = [
     icon: 'history',
     stat: (c) => plural(c.transactions, 'entry', 'entries'),
   },
+  {
+    id: 'extras',
+    href: '/extras',
+    label: 'Extra features',
+    title: 'Extra features',
+    floor: 'Extra features',
+    desc: 'Stock by product, suggested transfers, quick actions and an activity log.',
+    icon: 'extras',
+    stat: () => '4 tools',
+  },
 ]
 
 export const ARCHIVE = { href: '/archive', title: 'Archive' }

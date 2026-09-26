@@ -14,6 +14,7 @@ const PATHS = {
       <path d="M12 8v4l3 2" />
     </>
   ),
+  extras: <path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6l-5.4 2.9 1.2-6-4.5-4.2 6.1-.7z" />,
   arrow: <path d="M3 12h17M14 6l6 6-6 6" />,
   back: <path d="M21 12H4M10 6l-6 6 6 6" />,
   alert: (
