@@ -370,9 +370,6 @@ a { color: inherit; }
 /* history: reason and staff, set like the linked-transfer line */
 .tx-meta { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: .74rem; font-weight: 700; color: var(--steel); }
 .btn-block { width: 100%; }
-/* landing placeholder until Part B ports the exterior */
-.home-lite .hero-lede { margin-top: 24px; }
-.home-actions { margin-top: 36px; }
 
 /* ---------- responsive (kept in the reference's order; exterior rules are marked) ---------- */
 .ledger .dymo { font-size: .7rem; letter-spacing: .1em; }

@@ -23,6 +23,7 @@ import {
   type SectionCounts,
 } from '@/components/sections'
 import { useIsClient } from '@/components/useIsClient'
+import { handoff } from '@/components/exterior/handoff'
 import {
   Flip,
   createSmoothScroll,
@@ -208,6 +209,11 @@ export default function InteriorShell({
       Promise.race([document.fonts.ready, sleep(2500)]).then(start)
     } else {
       start()
+      // Entered from the exterior: its fly-in left the glow (root layout)
+      // up; fade it out over the entering timeline, as App.enter does.
+      if (Number(gsap.getProperty('#glow', 'opacity')) > 0) {
+        gsap.to('#glow', { autoAlpha: 0, duration: 1.1, ease: 'power2.out', delay: 0.05 })
+      }
     }
     return () => {
       cancelled = true
@@ -328,6 +334,38 @@ export default function InteriorShell({
     [router],
   )
 
+  // App.exit, first half: the glow comes up, then the exterior mounts at
+  // the end of the descent and flies back out of the door (handoff.exit).
+  const leaving = useRef(false)
+  const goHome = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return
+      }
+      event.preventDefault()
+      if (leaving.current) return
+      leaving.current = true
+      lenisRef.current?.stop()
+      exit.current?.kill()
+      gsap.to('#glow', {
+        autoAlpha: 1,
+        duration: 0.5,
+        ease: 'power2.in',
+        onComplete: () => {
+          handoff.exit = true
+          router.push('/', { scroll: false })
+        },
+      })
+    },
+    [router],
+  )
+
   const file = route?.kind === 'file' ? route.section : null
 
   return (
@@ -359,7 +397,7 @@ export default function InteriorShell({
             <InteriorLink href={LOGIN.href} className="bar-link">
               Switch user
             </InteriorLink>
-            <Link href="/" className="btn-exit" aria-label="Back to home">
+            <Link href="/" className="btn-exit" aria-label="Back to home" onClick={goHome}>
               <Icon name="back" className="ic ic-sm" />
               <span>Back to home</span>
             </Link>

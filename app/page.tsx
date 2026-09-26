@@ -1,48 +1,26 @@
-import Link from 'next/link'
-import Icon from '@/components/Icon'
+import Exterior, { type ExteriorNotice } from '@/components/exterior/Exterior'
+import { products, transactions, warehouses } from '@/lib/seed-data'
+import { isLowStock } from '@/lib/types'
 
-// Minimal landing page in the new design language. Part B replaces it with
-// the reference's exterior (WebGL scene, descent, ENTER).
+// Reads the in-memory store, so it must render per request.
+export const dynamic = 'force-dynamic'
+
+// The landing page: the reference's exterior (WebGL scene, scroll descent,
+// ENTER). The ground notice prints live numbers from the store.
 export default function HomePage() {
-  return (
-    <div className="interior home-lite">
-      <header className="int-bar">
-        <Link href="/" className="brand" aria-label="StockLite home">
-          <span className="brand-mark">SL</span>
-          <span className="brand-text">
-            <b>StockLite</b>
-            <small>Warehouse Inventory</small>
-          </span>
-        </Link>
-        <span />
-        <nav className="bar-right" aria-label="Account">
-          <Link href="/login" className="bar-link">
-            Sign in
-          </Link>
-          <Link href="/inventory" className="pill">
-            Open dashboard <Icon name="arrow" className="ic ic-sm" strokeWidth={2.6} />
-          </Link>
-        </nav>
-      </header>
+  const north = warehouses.find((w) => w.id === 'wh-north') ?? warehouses[0]
+  const northProducts = products.filter((p) => p.warehouseId === north?.id)
+  const lastTransfer = [...transactions]
+    .filter((t) => t.type === 'TRANSFER_IN')
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
 
-      <main className="lobby">
-        <h1 className="hero-title">Warehouse stock, tracked the moment it moves.</h1>
-        <p className="hero-lede">
-          StockLite gives your team one place to see inventory, move stock
-          between warehouses, and catch reorder points before shelves run dry.
-        </p>
-        <div className="actions home-actions">
-          <Link href="/archive" className="btn btn-ink">
-            Enter <Icon name="arrow" strokeWidth={2.6} />
-          </Link>
-          <Link href="/inventory" className="btn btn-outline">
-            View live inventory
-          </Link>
-          <Link href="/transfer" className="btn btn-outline">
-            Try a transfer
-          </Link>
-        </div>
-      </main>
-    </div>
-  )
+  const notice: ExteriorNotice = {
+    warehouse: north?.name ?? 'Warehouse',
+    units: northProducts.reduce((sum, p) => sum + p.currentStock, 0),
+    productCount: northProducts.length,
+    lowCount: products.filter(isLowStock).length,
+    lastTransferTo: lastTransfer?.warehouseName ?? null,
+  }
+
+  return <Exterior notice={notice} />
 }

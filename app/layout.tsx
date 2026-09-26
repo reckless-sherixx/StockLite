@@ -38,6 +38,9 @@ export default function RootLayout({
     <html lang="en" className={`${display.variable} ${sans.variable}`}>
       <body>
         {children}
+        {/* The ENTER / Back-to-home flash. Lives here so it survives the
+            route change between the exterior (/) and the interior shell. */}
+        <div id="glow" aria-hidden="true" />
         {/* Ink texture for the rubber stamps (.stamp uses filter: url(#ink)). */}
         <svg
           width="0"
