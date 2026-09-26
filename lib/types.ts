@@ -17,6 +17,13 @@ export type Product = {
 
 export type TransactionType = 'IN' | 'OUT' | 'TRANSFER_OUT' | 'TRANSFER_IN'
 
+export const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
+  IN: 'Stock in',
+  OUT: 'Stock out',
+  TRANSFER_OUT: 'Transfer out',
+  TRANSFER_IN: 'Transfer in',
+}
+
 export type Transaction = {
   id: string
   productId: string

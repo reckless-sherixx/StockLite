@@ -5,14 +5,7 @@ import EmptyState from '@/components/EmptyState'
 import Icon, { type IconName } from '@/components/Icon'
 import LocalTime from '@/components/LocalTime'
 import { useRowSwap } from '@/components/useRowSwap'
-import { Transaction, TransactionType } from '@/lib/types'
-
-const TYPE_LABELS: Record<TransactionType, string> = {
-  IN: 'Stock in',
-  OUT: 'Stock out',
-  TRANSFER_OUT: 'Transfer out',
-  TRANSFER_IN: 'Transfer in',
-}
+import { TRANSACTION_TYPE_LABELS, Transaction, TransactionType } from '@/lib/types'
 
 const TYPE_ICON: Record<TransactionType, IconName> = {
   IN: 'in',
@@ -108,7 +101,7 @@ export default function TransactionTable({
           label="Type"
           options={[
             ['all', 'All types'],
-            ...(Object.entries(TYPE_LABELS) as [string, string][]),
+            ...(Object.entries(TRANSACTION_TYPE_LABELS) as [string, string][]),
           ]}
           value={filters.type}
           onChange={(type) => setFilters((f) => ({ ...f, type }))}
@@ -181,7 +174,7 @@ export default function TransactionTable({
                             className={`tx-type tx-type--${t.type === 'OUT' ? 'out' : t.type}`}
                           >
                             <Icon name={TYPE_ICON[t.type] ?? 'history'} />
-                            {TYPE_LABELS[t.type] ?? t.type}
+                            {TRANSACTION_TYPE_LABELS[t.type]}
                           </span>
                         </td>
                         <td className="num">
