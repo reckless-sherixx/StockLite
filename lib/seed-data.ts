@@ -6,6 +6,7 @@ import {
   TransactionType,
   Warehouse,
 } from './types'
+import { logTransaction } from './transaction-log'
 
 const seedWarehouses: Warehouse[] = [
   {
@@ -307,6 +308,9 @@ export function recordTransaction(input: {
     staffName: input.staff?.name,
   }
   transactions.push(tx)
+  // Every write path records through here, so this logs all movements.
+  // Callers update stock before recording, so this is the new level.
+  logTransaction(tx, findProduct(tx.productId)?.currentStock ?? 0)
   return tx
 }
 

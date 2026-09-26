@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { applyStockMovement, applyTransfer, products } from '@/lib/seed-data'
+import { logRejected } from '@/lib/transaction-log'
 import { isMovementReason, MovementReason } from '@/lib/types'
 
 export async function GET() {
@@ -24,15 +25,33 @@ function toReason(value: unknown): MovementReason | undefined {
   throw new Error('Unknown reason')
 }
 
+// Short label for a request in the terminal, e.g. "stock OUT p-007 × 4".
+function describeRequest(body: Record<string, unknown> | null): string {
+  if (!body) return 'request'
+  if (body.action === 'stock') {
+    return `stock ${String(body.direction)} ${String(body.productId)} × ${String(body.quantity)}`
+  }
+  if (body.action === 'transfer') {
+    return `transfer ${String(body.productId)} → ${String(body.destWarehouseId)} × ${String(body.quantity)}`
+  }
+  return `action ${String(body.action)}`
+}
+
+// Every rejected request is logged, then answered with a 400.
+function reject(body: Record<string, unknown> | null, message: string) {
+  logRejected(describeRequest(body), message)
+  return NextResponse.json({ error: message }, { status: 400 })
+}
+
 export async function POST(request: Request) {
   let body: Record<string, unknown>
   try {
     body = await request.json()
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    return reject(null, 'Invalid JSON body')
   }
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    return reject(null, 'Invalid JSON body')
   }
 
   const action = body.action
@@ -41,16 +60,10 @@ export async function POST(request: Request) {
     if (action === 'stock') {
       const { productId, direction } = body
       if (typeof productId !== 'string' || !productId) {
-        return NextResponse.json(
-          { error: 'productId is required' },
-          { status: 400 },
-        )
+        return reject(body, 'productId is required')
       }
       if (direction !== 'IN' && direction !== 'OUT') {
-        return NextResponse.json(
-          { error: 'direction must be IN or OUT' },
-          { status: 400 },
-        )
+        return reject(body, 'direction must be IN or OUT')
       }
       const { product, recorded } = applyStockMovement(
         productId,
@@ -64,22 +77,13 @@ export async function POST(request: Request) {
     if (action === 'transfer') {
       const { productId, sourceWarehouseId, destWarehouseId } = body
       if (typeof productId !== 'string' || !productId) {
-        return NextResponse.json(
-          { error: 'productId is required' },
-          { status: 400 },
-        )
+        return reject(body, 'productId is required')
       }
       if (typeof destWarehouseId !== 'string' || !destWarehouseId) {
-        return NextResponse.json(
-          { error: 'destWarehouseId is required' },
-          { status: 400 },
-        )
+        return reject(body, 'destWarehouseId is required')
       }
       if (sourceWarehouseId !== undefined && typeof sourceWarehouseId !== 'string') {
-        return NextResponse.json(
-          { error: 'sourceWarehouseId must be a string' },
-          { status: 400 },
-        )
+        return reject(body, 'sourceWarehouseId must be a string')
       }
       const { source, destination, recorded } = applyTransfer(
         productId,
@@ -94,9 +98,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ source, destination, products, recorded })
     }
 
-    return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+    return reject(body, 'Unknown action')
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Request failed'
-    return NextResponse.json({ error: message }, { status: 400 })
+    return reject(body, message)
   }
 }

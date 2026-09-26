@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { transactions, findProduct } from '@/lib/seed-data'
 import { POST } from './route'
 
@@ -113,5 +113,37 @@ describe('POST /api/items — reason and staff', () => {
     expect(res.status).toBe(400)
     expect((await res.json()).error).toMatch(/Cannot transfer 999/)
     expect(transactions.length).toBe(before)
+  })
+})
+
+describe('POST /api/items — terminal logging', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('logs rejected movements as warnings', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const res = await post({
+      action: 'stock',
+      productId: 'p-007',
+      quantity: 999,
+      direction: 'OUT',
+    })
+    expect(res.status).toBe(400)
+    expect(warn).toHaveBeenCalledWith(
+      '[StockLite] REJECTED stock OUT p-007 × 999: Cannot stock out 999 — only 3 in stock',
+    )
+  })
+
+  it('logs validation rejections too', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await post({ action: 'stock', productId: 'p-001', quantity: 1, direction: 'UP' })
+    expect(warn).toHaveBeenCalledWith(
+      '[StockLite] REJECTED stock UP p-001 × 1: direction must be IN or OUT',
+    )
+    await post({ action: 'launch' })
+    expect(warn).toHaveBeenLastCalledWith(
+      '[StockLite] REJECTED action launch: Unknown action',
+    )
   })
 })
