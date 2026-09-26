@@ -1,18 +1,69 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Transaction } from '@/lib/types'
+import { Fragment, useMemo, useRef, useState } from 'react'
+import EmptyState from '@/components/EmptyState'
+import Icon, { type IconName } from '@/components/Icon'
+import LocalTime from '@/components/LocalTime'
+import { useRowSwap } from '@/components/useRowSwap'
+import { Transaction, TransactionType } from '@/lib/types'
 
-const TYPE_LABELS: Record<string, string> = {
+const TYPE_LABELS: Record<TransactionType, string> = {
   IN: 'Stock in',
   OUT: 'Stock out',
   TRANSFER_OUT: 'Transfer out',
   TRANSFER_IN: 'Transfer in',
 }
 
-// Locale-independent, e.g. "2026-09-17 11:20 UTC".
-function formatUtc(iso: string) {
-  return `${iso.slice(0, 16).replace('T', ' ')} UTC`
+const TYPE_ICON: Record<TransactionType, IconName> = {
+  IN: 'in',
+  OUT: 'out',
+  TRANSFER_OUT: 'tout',
+  TRANSFER_IN: 'tin',
+}
+
+type Filters = { type: string; warehouse: string }
+
+function applyFilters(transactions: Transaction[], filters: Filters) {
+  return transactions
+    .filter((t) => filters.type === 'all' || t.type === filters.type)
+    .filter((t) => filters.warehouse === 'all' || t.warehouseName === filters.warehouse)
+    .sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    )
+}
+
+function ChipGroup({
+  name,
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  name: string
+  label: string
+  options: [string, string][]
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <fieldset className="filter-group">
+      <legend className="filter-label">{label}</legend>
+      <div className="chips">
+        {options.map(([v, text]) => (
+          <label className="chip" key={v}>
+            <input
+              type="radio"
+              name={name}
+              value={v}
+              checked={value === v}
+              onChange={() => onChange(v)}
+            />
+            <span>{text}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
 }
 
 export default function TransactionTable({
@@ -20,12 +71,6 @@ export default function TransactionTable({
 }: {
   transactions: Transaction[]
 }) {
-  // The server and the browser can differ in locale and time zone, so
-  // rendering toLocaleString() on both breaks hydration. Render a fixed UTC
-  // string first, then switch to the viewer's local time once mounted.
-  const [isMounted, setIsMounted] = useState(false)
-  useEffect(() => setIsMounted(true), [])
-
   const warehouseOptions = useMemo(
     () => Array.from(new Set(transactions.map((t) => t.warehouseName))).sort(),
     [transactions],
@@ -38,101 +83,121 @@ export default function TransactionTable({
     [transactions],
   )
 
-  const [typeFilter, setTypeFilter] = useState('all')
-  const [warehouseFilter, setWarehouseFilter] = useState('all')
-
-  const visibleTransactions = useMemo(() => {
-    return transactions
-      .filter((t) => typeFilter === 'all' || t.type === typeFilter)
-      .filter(
-        (t) => warehouseFilter === 'all' || t.warehouseName === warehouseFilter,
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-      )
-  }, [transactions, typeFilter, warehouseFilter])
+  const [filters, setFilters] = useState<Filters>({ type: 'all', warehouse: 'all' })
+  const panelRef = useRef<HTMLDivElement>(null)
+  const shown = useRowSwap(
+    filters,
+    JSON.stringify([filters.type, filters.warehouse]),
+    panelRef,
+    { out: 0, in: 0.03 },
+  )
+  const matchCount = useMemo(
+    () => applyFilters(transactions, filters).length,
+    [transactions, filters],
+  )
+  const visibleTransactions = useMemo(
+    () => applyFilters(transactions, shown.value),
+    [transactions, shown.value],
+  )
 
   return (
     <>
-      <div className="filter-bar">
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          aria-label="Filter by type"
-        >
-          <option value="all">All types</option>
-          <option value="IN">Stock in</option>
-          <option value="OUT">Stock out</option>
-          <option value="TRANSFER_OUT">Transfer out</option>
-          <option value="TRANSFER_IN">Transfer in</option>
-        </select>
-
-        <select
-          value={warehouseFilter}
-          onChange={(e) => setWarehouseFilter(e.target.value)}
-          aria-label="Filter by warehouse"
-        >
-          <option value="all">All warehouses</option>
-          {warehouseOptions.map((w) => (
-            <option key={w} value={w}>
-              {w}
-            </option>
-          ))}
-        </select>
+      <div className="history-filters">
+        <ChipGroup
+          name="h-type"
+          label="Type"
+          options={[
+            ['all', 'All types'],
+            ...(Object.entries(TYPE_LABELS) as [string, string][]),
+          ]}
+          value={filters.type}
+          onChange={(type) => setFilters((f) => ({ ...f, type }))}
+        />
+        <ChipGroup
+          name="h-wh"
+          label="Warehouse"
+          options={[
+            ['all', 'All warehouses'],
+            ...warehouseOptions.map((w): [string, string] => [w, w]),
+          ]}
+          value={filters.warehouse}
+          onChange={(warehouse) => setFilters((f) => ({ ...f, warehouse }))}
+        />
       </div>
 
-      <div className="panel table-panel">
-        {visibleTransactions.length === 0 ? (
-          <div className="empty-state">
-            <h3>No transactions match these filters</h3>
-            <p>Try a different type or warehouse.</p>
-          </div>
-        ) : (
-          <div className="table-scroll" tabIndex={0} aria-label="Transaction history table">
-            <table>
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Warehouse</th>
-                <th>Type</th>
-                <th>Quantity</th>
-                <th>Timestamp</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleTransactions.map((t) => {
-                const linked = t.linkedTransactionId
-                  ? byId.get(t.linkedTransactionId)
-                  : undefined
-                return (
-                  <tr key={t.id}>
-                    <td>{t.productName}</td>
-                    <td>{t.warehouseName}</td>
-                    <td>
-                      {TYPE_LABELS[t.type] ?? t.type}
-                      {linked && (
-                        <span className="linked-transfer">
-                          {t.type === 'TRANSFER_OUT' ? 'to' : 'from'}{' '}
-                          {linked.warehouseName}
-                        </span>
-                      )}
-                    </td>
-                    <td>{t.quantity}</td>
-                    <td>
-                      <time dateTime={t.timestamp}>
-                        {isMounted
-                          ? new Date(t.timestamp).toLocaleString()
-                          : formatUtc(t.timestamp)}
-                      </time>
-                    </td>
+      <p className="result-count" aria-live="polite">
+        Showing {matchCount} of {transactions.length} entries
+      </p>
+
+      <div ref={panelRef}>
+        <Fragment key={shown.key}>
+          {visibleTransactions.length === 0 ? (
+            <EmptyState
+              title="No transactions match these filters"
+              hint="Try a different type or warehouse."
+            />
+          ) : (
+            <div
+              className="table-scroll"
+              tabIndex={0}
+              aria-label="Transaction history table"
+            >
+              <table className="ledger">
+                <thead>
+                  <tr>
+                    <th scope="col">Product</th>
+                    <th scope="col">Warehouse</th>
+                    <th scope="col">Type</th>
+                    <th scope="col" className="num">
+                      Quantity
+                    </th>
+                    <th scope="col">Timestamp</th>
                   </tr>
-                )
-              })}
-            </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {visibleTransactions.map((t) => {
+                    const linked = t.linkedTransactionId
+                      ? byId.get(t.linkedTransactionId)
+                      : undefined
+                    const meta = [t.reason, t.staffName && `by ${t.staffName}`]
+                      .filter(Boolean)
+                      .join(' · ')
+                    return (
+                      <tr key={t.id}>
+                        <td>
+                          <span className="p-name">{t.productName}</span>
+                          {linked && (
+                            <span className="linked">
+                              <Icon name="link" className="ic ic-xs" />
+                              {t.type === 'TRANSFER_OUT' ? 'to' : 'from'}{' '}
+                              {linked.warehouseName}
+                            </span>
+                          )}
+                          {meta && <span className="tx-meta">{meta}</span>}
+                        </td>
+                        <td>{t.warehouseName}</td>
+                        <td>
+                          <span
+                            className={`tx-type tx-type--${t.type === 'OUT' ? 'out' : t.type}`}
+                          >
+                            <Icon name={TYPE_ICON[t.type] ?? 'history'} />
+                            {TYPE_LABELS[t.type] ?? t.type}
+                          </span>
+                        </td>
+                        <td className="num">
+                          <b>{t.quantity}</b>
+                        </td>
+                        <td className="tnum">
+                          <LocalTime iso={t.timestamp} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Fragment>
       </div>
     </>
   )

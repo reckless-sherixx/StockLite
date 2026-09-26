@@ -1,8 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Product, Warehouse } from '@/lib/types'
+import FormMessage from '@/components/FormMessage'
+import Icon from '@/components/Icon'
+import ReasonField from '@/components/ReasonField'
+import Stamp from '@/components/Stamp'
+import { gsap, prefersReducedMotion } from '@/lib/gsap'
+import { MovementReason, Product, Warehouse } from '@/lib/types'
 
 export default function TransferForm({
   products: initialProducts,
@@ -26,9 +31,12 @@ export default function TransferForm({
   )
   const [productId, setProductId] = useState(sourceProducts[0]?.id ?? '')
   const [quantity, setQuantity] = useState('')
+  const [reason, setReason] = useState<MovementReason | ''>('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [shipment, setShipment] = useState(0) // bumps to send boxes down the route
+  const boxesRef = useRef<HTMLSpanElement>(null)
 
   function handleSourceChange(id: string) {
     setSourceWarehouseId(id)
@@ -48,6 +56,7 @@ export default function TransferForm({
     e.preventDefault()
     setError('')
     setSuccess('')
+    setShipment(0)
 
     if (!sourceWarehouseId || !destWarehouseId) {
       setError('Choose both a source and a destination warehouse.')
@@ -84,6 +93,7 @@ export default function TransferForm({
           sourceWarehouseId,
           destWarehouseId,
           quantity: parsedQuantity,
+          ...(reason ? { reason } : {}),
         }),
       })
       const data = await res.json()
@@ -106,6 +116,8 @@ export default function TransferForm({
         `Transferred ${parsedQuantity} unit${parsedQuantity === 1 ? '' : 's'} of ${data.source.name} to ${destName}.`,
       )
       setQuantity('')
+      setReason('')
+      setShipment((n) => n + 1)
     } catch {
       setError('Could not reach the server. Please try again.')
     } finally {
@@ -113,28 +125,87 @@ export default function TransferForm({
     }
   }
 
-  return (
-    <div className="panel form-panel">
-      <form onSubmit={handleTransfer}>
-        <div className="form-field">
-          <label htmlFor="source">Source warehouse</label>
-          <select
-            id="source"
-            value={sourceWarehouseId}
-            onChange={(e) => handleSourceChange(e.target.value)}
-          >
-            {warehouses.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-        </div>
+  // The reference's shipping animation: five boxes run the route line
+  // (downwards when the route stacks vertically on narrow screens).
+  useLayoutEffect(() => {
+    const boxes = boxesRef.current
+    const track = boxes?.parentElement
+    if (!shipment || !boxes || !track || prefersReducedMotion()) return
+    const vertical = track.offsetHeight > track.offsetWidth
+    const dist = vertical ? track.offsetHeight - 14 : track.offsetWidth - 22
+    const axis = vertical ? 'y' : 'x'
+    const ctx = gsap.context(() => {
+      Array.from(boxes.children).forEach((box, i) => {
+        if (vertical) gsap.set(box, { left: '50%', xPercent: -50, top: 0, marginTop: 0 })
+        gsap.fromTo(
+          box,
+          { autoAlpha: 0, [axis]: 0 },
+          { keyframes: { autoAlpha: [0, 1, 1, 0] }, [axis]: dist, duration: 1.05, delay: i * 0.12, ease: 'power2.inOut' },
+        )
+      })
+    })
+    return () => ctx.revert()
+  }, [shipment])
 
-        <div className="form-field">
+  return (
+    <form className="docket" autoComplete="off" onSubmit={handleTransfer}>
+      <div className="route">
+        <fieldset className="route-end">
+          <legend className="field-legend">Source warehouse</legend>
+          <div className="wh-cards">
+            {warehouses.map((w) => (
+              <label className="wh-card" key={w.id}>
+                <input
+                  type="radio"
+                  name="source"
+                  value={w.id}
+                  checked={w.id === sourceWarehouseId}
+                  onChange={() => handleSourceChange(w.id)}
+                />
+                <span className="wh-name">{w.name}</span>
+                <span className="wh-loc">{w.location}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <div className="route-line" aria-hidden="true">
+          <span className="rl-track" />
+          <span className="rl-head">
+            <Icon name="arrow" strokeWidth={2.6} />
+          </span>
+          <span className="rl-boxes" ref={boxesRef}>
+            {shipment > 0 &&
+              [0, 1, 2, 3, 4].map((i) => <i key={`${shipment}-${i}`} />)}
+          </span>
+        </div>
+        <fieldset className="route-end">
+          <legend className="field-legend">Destination warehouse</legend>
+          <div className="wh-cards">
+            {warehouses
+              .filter((w) => w.id !== sourceWarehouseId)
+              .map((w) => (
+                <label className="wh-card" key={w.id}>
+                  <input
+                    type="radio"
+                    name="dest"
+                    value={w.id}
+                    checked={w.id === destWarehouseId}
+                    onChange={() => setDestWarehouseId(w.id)}
+                  />
+                  <span className="wh-name">{w.name}</span>
+                  <span className="wh-loc">{w.location}</span>
+                </label>
+              ))}
+          </div>
+        </fieldset>
+      </div>
+
+      <div className="docket-fields">
+        <div className="field">
           <label htmlFor="t-product">Product</label>
           <select
             id="t-product"
+            className="select"
             value={productId}
             onChange={(e) => setProductId(e.target.value)}
             disabled={sourceProducts.length === 0}
@@ -144,65 +215,44 @@ export default function TransferForm({
             ) : (
               sourceProducts.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} ({p.currentStock} on hand)
+                  {`${p.name} (${p.currentStock} on hand)`}
                 </option>
               ))
             )}
           </select>
         </div>
-
-        <div className="form-field">
-          <label htmlFor="dest">Destination warehouse</label>
-          <select
-            id="dest"
-            value={destWarehouseId}
-            onChange={(e) => setDestWarehouseId(e.target.value)}
-          >
-            {warehouses
-              .filter((w) => w.id !== sourceWarehouseId)
-              .map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-          </select>
-        </div>
-
-        <div className="form-field">
+        <div className="field">
           <label htmlFor="t-quantity">Quantity</label>
           <input
             id="t-quantity"
+            className="input qty"
             type="number"
             min={1}
             placeholder="0"
+            inputMode="numeric"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
           />
         </div>
+        <ReasonField id="t-reason" value={reason} onChange={setReason} />
+      </div>
 
-        <div className="form-error">{error}</div>
-        {!error && success && (
-          <p
-            style={{
-              fontSize: 12.5,
-              color: 'var(--moss-dark)',
-              margin: '-10px 0 12px',
-            }}
-          >
-            {success}
-          </p>
-        )}
+      <FormMessage error={error} success={success} />
 
-        <div className="form-actions">
-          <button
-            className="btn btn-primary"
-            type="submit"
-            disabled={submitting}
-          >
-            Transfer stock
-          </button>
-        </div>
-      </form>
-    </div>
+      <div className="actions">
+        <button
+          className="btn btn-ink btn-wide"
+          type="submit"
+          disabled={submitting}
+          aria-busy={submitting || undefined}
+        >
+          <Icon name="transfer" />
+          <span>Transfer stock</span>
+        </button>
+      </div>
+      <span className="stamp-slot">
+        {shipment > 0 && <Stamp key={shipment} text="Transferred" />}
+      </span>
+    </form>
   )
 }
