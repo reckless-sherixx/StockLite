@@ -94,8 +94,8 @@ contained there.
 ### 1. Stock by product
 
 - One row per product **name**. Columns: Product, Category, one column per
-  warehouse showing `stock / threshold` + status badge (or "—" when the product
-  has no row there), Total stock.
+  warehouse showing `stock / threshold` + status badge (or "Not stocked" when the
+  product has no row there), Total stock.
 - Order: products low in any warehouse first, then by name.
 - Toggle: "Only products needing attention".
 - Footer row: total units per warehouse and overall.
@@ -152,14 +152,15 @@ covered) and from the API route's error branch:
 
 ```
 [StockLite] t-005 OUT 20 × Corrugated Shipping Box (M) @ North Distribution Center 420 → 400 · by Jordan Ruiz · reason: Customer order
-[StockLite] t-006 TRANSFER_OUT 12 × Nitrile Gloves (Box of 100) @ North Distribution Center 110 → 98 · linked t-007 · by Jordan Ruiz · reason: Rebalancing
+[StockLite] t-007 TRANSFER_IN 12 × Nitrile Gloves (Box of 100) @ South Fulfillment Hub 39 → 51 · linked t-006 · by Jordan Ruiz · reason: Rebalancing
 [StockLite] REJECTED stock OUT p-007 × 4: Cannot stock out 4 — only 3 in stock
 ```
 
 - Recorded → `console.log`; rejected → `console.warn`.
 - `stockAfter` is the product's current stock at record time (writes happen before
   recording); `before = after ∓ quantity` by type.
-- Omit the "by …" / "reason: …" parts when absent.
+- Omit the "by …" / "reason: …" parts when absent. The TRANSFER_OUT line has no
+  "linked …" part (it is logged before its partner exists); the TRANSFER_IN line carries it.
 
 ## Error handling
 
@@ -186,8 +187,9 @@ covered) and from the API route's error branch:
 
 | Task | Model |
 |---|---|
-| Vitest setup + terminal logging | Haiku |
-| Sidebar tab + `/extras` shell with tabs | Haiku |
-| Reason + staff end to end + Activity log | Opus |
-| `insights.ts` + Stock by product + Suggested transfers | Opus |
-| Quick actions tab | Sonnet |
+| 1. Reason + staff (types, store, API) + Vitest setup | Opus |
+| 2. Terminal logging | Haiku |
+| 3. Sidebar tab + `/extras` shell with tabs | Haiku |
+| 4. Activity log | Sonnet |
+| 5. `insights.ts` + Stock by product + Suggested transfers | Opus |
+| 6. Quick actions | Sonnet |
