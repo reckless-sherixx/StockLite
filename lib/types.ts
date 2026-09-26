@@ -27,12 +27,37 @@ export type Transaction = {
   quantity: number
   timestamp: string // ISO string
   linkedTransactionId?: string // pairs TRANSFER_OUT with TRANSFER_IN
+  reason?: MovementReason
+  // Who recorded it. Always set server-side from the signed-in staff user.
+  staffId?: string
+  staffName?: string
 }
 
 export type StaffUser = {
   id: string
   name: string
   role: 'staff'
+}
+
+// Why stock moved. Optional on every movement; the list is fixed so reports
+// can group by it.
+export const MOVEMENT_REASONS = [
+  'Restock',
+  'Customer order',
+  'Customer return',
+  'Damaged',
+  'Count correction',
+  'Rebalancing',
+  'Other',
+] as const
+
+export type MovementReason = (typeof MOVEMENT_REASONS)[number]
+
+export function isMovementReason(value: unknown): value is MovementReason {
+  return (
+    typeof value === 'string' &&
+    (MOVEMENT_REASONS as readonly string[]).includes(value)
+  )
 }
 
 // Low-stock status shared by the inventory table and status badge.

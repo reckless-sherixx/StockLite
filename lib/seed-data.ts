@@ -1,4 +1,11 @@
-import { Product, Transaction, TransactionType, Warehouse } from './types'
+import {
+  MovementReason,
+  Product,
+  StaffUser,
+  Transaction,
+  TransactionType,
+  Warehouse,
+} from './types'
 
 const seedWarehouses: Warehouse[] = [
   {
@@ -269,6 +276,11 @@ function assertValidQuantity(quantity: number) {
   }
 }
 
+type MovementOptions = {
+  reason?: MovementReason
+  staff?: StaffUser
+}
+
 export function recordTransaction(input: {
   productId: string
   productName: string
@@ -277,6 +289,8 @@ export function recordTransaction(input: {
   quantity: number
   linkedTransactionId?: string
   timestamp?: string
+  reason?: MovementReason
+  staff?: StaffUser
 }): Transaction {
   const tx: Transaction = {
     id: `t-${String(store.nextTransactionSeq++).padStart(3, '0')}`,
@@ -288,6 +302,9 @@ export function recordTransaction(input: {
     quantity: input.quantity,
     timestamp: input.timestamp ?? new Date().toISOString(),
     linkedTransactionId: input.linkedTransactionId,
+    reason: input.reason,
+    staffId: input.staff?.id,
+    staffName: input.staff?.name,
   }
   transactions.push(tx)
   return tx
@@ -300,7 +317,8 @@ export function applyStockMovement(
   productId: string,
   quantity: number,
   direction: 'IN' | 'OUT',
-): Product {
+  options: MovementOptions = {},
+): { product: Product; recorded: Transaction[] } {
   const product = findProduct(productId)
   if (!product) throw new Error('Product not found')
 
@@ -313,15 +331,17 @@ export function applyStockMovement(
 
   product.currentStock += direction === 'IN' ? quantity : -quantity
 
-  recordTransaction({
+  const tx = recordTransaction({
     productId: product.id,
     productName: product.name,
     warehouseId: product.warehouseId,
     type: direction,
     quantity,
+    reason: options.reason,
+    staff: options.staff,
   })
 
-  return product
+  return { product, recorded: [tx] }
 }
 
 // Moves stock for one product from its warehouse to another. The same
@@ -333,8 +353,9 @@ export function applyTransfer(
   productId: string,
   destWarehouseId: string,
   quantity: number,
-  sourceWarehouseId?: string,
-): { source: Product; destination: Product } {
+  options: MovementOptions & { sourceWarehouseId?: string } = {},
+): { source: Product; destination: Product; recorded: Transaction[] } {
+  const { sourceWarehouseId } = options
   const source = findProduct(productId)
   if (!source) throw new Error('Source product not found')
 
@@ -385,6 +406,8 @@ export function applyTransfer(
     type: 'TRANSFER_OUT',
     quantity,
     timestamp,
+    reason: options.reason,
+    staff: options.staff,
   })
   const transferIn = recordTransaction({
     productId: destination.id,
@@ -394,10 +417,12 @@ export function applyTransfer(
     quantity,
     timestamp,
     linkedTransactionId: transferOut.id,
+    reason: options.reason,
+    staff: options.staff,
   })
   transferOut.linkedTransactionId = transferIn.id
 
-  return { source, destination }
+  return { source, destination, recorded: [transferOut, transferIn] }
 }
 
 function nextProductId() {

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
+import { getCurrentUser } from '@/lib/auth'
 import { applyStockMovement, applyTransfer, products } from '@/lib/seed-data'
+import { isMovementReason, MovementReason } from '@/lib/types'
 
 export async function GET() {
   return NextResponse.json({ products })
@@ -12,6 +14,14 @@ function toQuantity(value: unknown): number {
   if (typeof value === 'number') return value
   if (typeof value === 'string' && value.trim() !== '') return Number(value)
   return NaN
+}
+
+// Optional. Anything other than a listed reason is rejected rather than
+// silently dropped, so a typo in a client can't lose the reason.
+function toReason(value: unknown): MovementReason | undefined {
+  if (value === undefined || value === null || value === '') return undefined
+  if (isMovementReason(value)) return value
+  throw new Error('Unknown reason')
 }
 
 export async function POST(request: Request) {
@@ -42,12 +52,13 @@ export async function POST(request: Request) {
           { status: 400 },
         )
       }
-      const product = applyStockMovement(
+      const { product, recorded } = applyStockMovement(
         productId,
         toQuantity(body.quantity),
         direction,
+        { reason: toReason(body.reason), staff: getCurrentUser() },
       )
-      return NextResponse.json({ product, products })
+      return NextResponse.json({ product, products, recorded })
     }
 
     if (action === 'transfer') {
@@ -70,13 +81,17 @@ export async function POST(request: Request) {
           { status: 400 },
         )
       }
-      const { source, destination } = applyTransfer(
+      const { source, destination, recorded } = applyTransfer(
         productId,
         destWarehouseId,
         toQuantity(body.quantity),
-        sourceWarehouseId,
+        {
+          sourceWarehouseId,
+          reason: toReason(body.reason),
+          staff: getCurrentUser(),
+        },
       )
-      return NextResponse.json({ source, destination, products })
+      return NextResponse.json({ source, destination, products, recorded })
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
