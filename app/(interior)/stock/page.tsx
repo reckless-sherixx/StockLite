@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import SheetHead from '@/components/SheetHead'
 import StockForm from '@/components/StockForm'
 import { sectionById } from '@/components/sections'
-import { products } from '@/lib/seed-data'
+import { products, warehouses } from '@/lib/seed-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +15,7 @@ export default function StockPage() {
         title="Stock In / Stock Out"
         sub="Record incoming or outgoing stock for a single warehouse."
       />
-      <StockForm products={products} />
+      <StockForm products={products} warehouses={warehouses} />
     </>
   )
 }
