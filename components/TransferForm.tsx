@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Product, Warehouse } from '@/lib/types'
 
 export default function TransferForm({
@@ -10,6 +11,7 @@ export default function TransferForm({
   products: Product[]
   warehouses: Warehouse[]
 }) {
+  const router = useRouter()
   const [products, setProducts] = useState(initialProducts)
   const [sourceWarehouseId, setSourceWarehouseId] = useState(
     warehouses[0]?.id ?? '',
@@ -40,20 +42,36 @@ export default function TransferForm({
 
   const selectedProduct = products.find((p) => p.id === productId)
 
-  // TASK 3: This currently sends the transfer request with no validation at
-  // all, and doesn't update the UI afterward. Add checks before calling the
-  // API:
-  //   - source and destination warehouses must be different
-  //   - a product must be selected
-  //   - quantity must be a positive number and <= selectedProduct.currentStock
-  // Then, after a successful response, update `products` state using
-  // data.source and data.destination (add the destination row if it's new).
+  // Mirrors the server-side checks so mistakes are caught before a request;
+  // the API re-validates everything and rejects a transfer as a whole.
   async function handleTransfer(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setSuccess('')
 
+    if (!sourceWarehouseId || !destWarehouseId) {
+      setError('Choose both a source and a destination warehouse.')
+      return
+    }
+    if (sourceWarehouseId === destWarehouseId) {
+      setError('Source and destination warehouses must be different.')
+      return
+    }
+    if (!selectedProduct || selectedProduct.warehouseId !== sourceWarehouseId) {
+      setError('Choose a product to transfer.')
+      return
+    }
     const parsedQuantity = Number(quantity)
+    if (!quantity || !Number.isSafeInteger(parsedQuantity) || parsedQuantity <= 0) {
+      setError('Enter a whole number greater than 0.')
+      return
+    }
+    if (parsedQuantity > selectedProduct.currentStock) {
+      setError(
+        `Only ${selectedProduct.currentStock} in stock at the source warehouse.`,
+      )
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -63,6 +81,7 @@ export default function TransferForm({
         body: JSON.stringify({
           action: 'transfer',
           productId,
+          sourceWarehouseId,
           destWarehouseId,
           quantity: parsedQuantity,
         }),
@@ -73,10 +92,18 @@ export default function TransferForm({
         return
       }
 
-      // TODO: update `products` state with data.source and data.destination
+      // The server's full list includes both updated rows, plus the
+      // destination row if this transfer had to create it.
+      setProducts(data.products)
+      // Drop Next's client-side cache of already-visited pages, otherwise
+      // navigating back to Inventory/History shows pre-transfer stock levels.
+      router.refresh()
 
+      const destName =
+        warehouses.find((w) => w.id === data.destination.warehouseId)?.name ??
+        'the destination warehouse'
       setSuccess(
-        `Transferred ${parsedQuantity} unit${parsedQuantity === 1 ? '' : 's'} of ${data.source.name} to the destination warehouse.`,
+        `Transferred ${parsedQuantity} unit${parsedQuantity === 1 ? '' : 's'} of ${data.source.name} to ${destName}.`,
       )
       setQuantity('')
     } catch {

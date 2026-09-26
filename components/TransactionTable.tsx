@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Transaction } from '@/lib/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -10,13 +10,31 @@ const TYPE_LABELS: Record<string, string> = {
   TRANSFER_IN: 'Transfer in',
 }
 
+// Locale-independent, e.g. "2026-09-17 11:20 UTC".
+function formatUtc(iso: string) {
+  return `${iso.slice(0, 16).replace('T', ' ')} UTC`
+}
+
 export default function TransactionTable({
   transactions,
 }: {
   transactions: Transaction[]
 }) {
+  // The server and the browser can differ in locale and time zone, so
+  // rendering toLocaleString() on both breaks hydration. Render a fixed UTC
+  // string first, then switch to the viewer's local time once mounted.
+  const [isMounted, setIsMounted] = useState(false)
+  useEffect(() => setIsMounted(true), [])
+
   const warehouseOptions = useMemo(
     () => Array.from(new Set(transactions.map((t) => t.warehouseName))).sort(),
+    [transactions],
+  )
+
+  // Looked up across all transactions (not just the filtered ones) so a
+  // transfer row can still name its counterpart warehouse when filtered.
+  const byId = useMemo(
+    () => new Map(transactions.map((t) => [t.id, t])),
     [transactions],
   )
 
@@ -83,15 +101,34 @@ export default function TransactionTable({
               </tr>
             </thead>
             <tbody>
-              {visibleTransactions.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.productName}</td>
-                  <td>{t.warehouseName}</td>
-                  <td>{TYPE_LABELS[t.type] ?? t.type}</td>
-                  <td>{t.quantity}</td>
-                  <td>{new Date(t.timestamp).toLocaleString()}</td>
-                </tr>
-              ))}
+              {visibleTransactions.map((t) => {
+                const linked = t.linkedTransactionId
+                  ? byId.get(t.linkedTransactionId)
+                  : undefined
+                return (
+                  <tr key={t.id}>
+                    <td>{t.productName}</td>
+                    <td>{t.warehouseName}</td>
+                    <td>
+                      {TYPE_LABELS[t.type] ?? t.type}
+                      {linked && (
+                        <span className="linked-transfer">
+                          {t.type === 'TRANSFER_OUT' ? 'to' : 'from'}{' '}
+                          {linked.warehouseName}
+                        </span>
+                      )}
+                    </td>
+                    <td>{t.quantity}</td>
+                    <td>
+                      <time dateTime={t.timestamp}>
+                        {isMounted
+                          ? new Date(t.timestamp).toLocaleString()
+                          : formatUtc(t.timestamp)}
+                      </time>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
             </table>
           </div>

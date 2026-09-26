@@ -6,6 +6,7 @@ import {
   Warehouse,
   getStockStatus,
   getStockStatusLabel,
+  isLowStock,
 } from '@/lib/types'
 import StatusBadge from '@/components/StatusBadge'
 
@@ -30,10 +31,26 @@ export default function InventoryTable({
     return products.filter((p) => {
       if (selectedCategory !== 'all' && p.category !== selectedCategory)
         return false
-      if (lowStockOnly && p.currentStock > p.reorderThreshold) return false
+      if (lowStockOnly && !isLowStock(p)) return false
       return true
     })
   }, [products, selectedCategory, lowStockOnly])
+
+  const lowStockByWarehouse = useMemo(
+    () =>
+      warehouses.map((w) => {
+        const atWarehouse = products.filter((p) => p.warehouseId === w.id)
+        const statuses = atWarehouse.filter(isLowStock).map(getStockStatus)
+        return {
+          warehouse: w,
+          total: atWarehouse.length,
+          needing: statuses.length,
+          below: statuses.filter((s) => s === 'critical').length,
+          at: statuses.filter((s) => s === 'low').length,
+        }
+      }),
+    [products, warehouses],
+  )
 
   return (
     <>
@@ -57,6 +74,45 @@ export default function InventoryTable({
           <div className="label">Units on hand</div>
         </div>
       </div>
+
+      <section
+        className="low-stock-summary"
+        aria-label="Products needing replenishment by warehouse"
+      >
+        {lowStockByWarehouse.map(({ warehouse, total, needing, below, at }) => (
+          <div
+            key={warehouse.id}
+            className={`low-stock-card${needing > 0 ? ' has-low' : ''}`}
+          >
+            <div className="low-stock-card-head">
+              <h3>{warehouse.name}</h3>
+              <span>{warehouse.location}</span>
+            </div>
+            <div className="low-stock-count">
+              <span className="value">{needing}</span>
+              <span className="label">
+                of {total} product{total === 1 ? '' : 's'} need
+                {needing === 1 ? 's' : ''} replenishment
+              </span>
+            </div>
+            {needing > 0 ? (
+              <div className="low-stock-breakdown">
+                {below > 0 && (
+                  <StatusBadge
+                    status="critical"
+                    label={`${below} below threshold`}
+                  />
+                )}
+                {at > 0 && (
+                  <StatusBadge status="low" label={`${at} at threshold`} />
+                )}
+              </div>
+            ) : (
+              <p className="low-stock-ok">Everything is above its reorder threshold.</p>
+            )}
+          </div>
+        ))}
+      </section>
 
       <div className="filter-bar">
         <select
