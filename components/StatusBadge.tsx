@@ -1,16 +1,13 @@
-import { StockStatus } from '@/lib/types'
+import { StockStatus, getStockStatusLabel } from '@/lib/types'
 
+// Stock status as label tape: black below threshold, grey at it, white when
+// in stock.
 export default function StatusBadge({
   status,
-  label,
+  label = getStockStatusLabel(status),
 }: {
   status: StockStatus
-  label: string
+  label?: string
 }) {
-  return (
-    <span className={`status-badge status-${status}`}>
-      <span className="status-dot" />
-      {label}
-    </span>
-  )
+  return <span className={`dymo dymo--${status}`}>{label}</span>
 }

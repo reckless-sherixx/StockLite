@@ -1,14 +1,23 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import {
-  Product,
-  Warehouse,
-  getStockStatus,
-  getStockStatusLabel,
-  isLowStock,
-} from '@/lib/types'
+import { Fragment, useMemo, useRef, useState, type CSSProperties } from 'react'
+import EmptyState from '@/components/EmptyState'
+import Icon from '@/components/Icon'
 import StatusBadge from '@/components/StatusBadge'
+import { fmt } from '@/components/format'
+import { useRowSwap } from '@/components/useRowSwap'
+import { Product, Warehouse, getStockStatus, isLowStock } from '@/lib/types'
+
+type Filters = { category: string; lowStockOnly: boolean }
+
+function applyFilters(products: Product[], filters: Filters) {
+  return products.filter((p) => {
+    if (filters.category !== 'all' && p.category !== filters.category)
+      return false
+    if (filters.lowStockOnly && !isLowStock(p)) return false
+    return true
+  })
+}
 
 export default function InventoryTable({
   products,
@@ -24,17 +33,26 @@ export default function InventoryTable({
   const warehouseName = (id: string) =>
     warehouses.find((w) => w.id === id)?.name ?? id
 
-  const [selectedCategory, setSelectedCategory] = useState('all')
-  const [lowStockOnly, setLowStockOnly] = useState(false)
-
-  const visibleProducts = useMemo(() => {
-    return products.filter((p) => {
-      if (selectedCategory !== 'all' && p.category !== selectedCategory)
-        return false
-      if (lowStockOnly && !isLowStock(p)) return false
-      return true
-    })
-  }, [products, selectedCategory, lowStockOnly])
+  const [filters, setFilters] = useState<Filters>({
+    category: 'all',
+    lowStockOnly: false,
+  })
+  const panelRef = useRef<HTMLDivElement>(null)
+  // The count updates at once; the rows follow after the fade-out.
+  const shown = useRowSwap(
+    filters,
+    JSON.stringify([filters.category, filters.lowStockOnly]),
+    panelRef,
+    { out: 0.004, in: 0.022 },
+  )
+  const matchCount = useMemo(
+    () => applyFilters(products, filters).length,
+    [products, filters],
+  )
+  const visibleProducts = useMemo(
+    () => applyFilters(products, shown.value),
+    [products, shown.value],
+  )
 
   const lowStockByWarehouse = useMemo(
     () =>
@@ -54,132 +72,174 @@ export default function InventoryTable({
 
   return (
     <>
-      <div className="summary-strip">
-        <div className="summary-tile">
-          <div className="value">{products.length}</div>
-          <div className="label">Total SKUs tracked</div>
+      <dl className="ledger-band">
+        <div>
+          <dt>Total SKUs tracked</dt>
+          <dd>{fmt(products.length)}</dd>
         </div>
-        <div className="summary-tile">
-          <div className="value">{warehouses.length}</div>
-          <div className="label">Warehouses</div>
+        <div>
+          <dt>Warehouses</dt>
+          <dd>{fmt(warehouses.length)}</dd>
         </div>
-        <div className="summary-tile">
-          <div className="value">{categories.length}</div>
-          <div className="label">Categories</div>
+        <div>
+          <dt>Categories</dt>
+          <dd>{fmt(categories.length)}</dd>
         </div>
-        <div className="summary-tile">
-          <div className="value">
-            {products.reduce((sum, p) => sum + p.currentStock, 0)}
-          </div>
-          <div className="label">Units on hand</div>
+        <div>
+          <dt>Units on hand</dt>
+          <dd>{fmt(products.reduce((sum, p) => sum + p.currentStock, 0))}</dd>
         </div>
-      </div>
+      </dl>
 
       <section
-        className="low-stock-summary"
+        className="replenish"
         aria-label="Products needing replenishment by warehouse"
       >
         {lowStockByWarehouse.map(({ warehouse, total, needing, below, at }) => (
-          <div
+          <article
             key={warehouse.id}
-            className={`low-stock-card${needing > 0 ? ' has-low' : ''}`}
+            className={`replenish-card${needing > 0 ? ' has-low' : ''}`}
           >
-            <div className="low-stock-card-head">
-              <h3>{warehouse.name}</h3>
-              <span>{warehouse.location}</span>
-            </div>
-            <div className="low-stock-count">
-              <span className="value">{needing}</span>
-              <span className="label">
-                of {total} product{total === 1 ? '' : 's'} need
-                {needing === 1 ? 's' : ''} replenishment
+            <h2 className="replenish-name">
+              <span className="dymo">{warehouse.name}</span>
+            </h2>
+            <p className="replenish-loc">{warehouse.location}</p>
+            <p className="replenish-big">
+              {fmt(needing)}
+              <span>
+                of {fmt(total)} product{total === 1 ? '' : 's'}
               </span>
-            </div>
+            </p>
+            <p className="replenish-sub">
+              need{needing === 1 ? 's' : ''} replenishment
+            </p>
             {needing > 0 ? (
-              <div className="low-stock-breakdown">
+              <ul className="replenish-list">
                 {below > 0 && (
-                  <StatusBadge
-                    status="critical"
-                    label={`${below} below threshold`}
-                  />
+                  <li>
+                    <StatusBadge status="critical" label={`${below} below threshold`} />
+                  </li>
                 )}
                 {at > 0 && (
-                  <StatusBadge status="low" label={`${at} at threshold`} />
+                  <li>
+                    <StatusBadge status="low" label={`${at} at threshold`} />
+                  </li>
                 )}
-              </div>
+              </ul>
             ) : (
-              <p className="low-stock-ok">Everything is above its reorder threshold.</p>
+              <p className="replenish-ok">
+                <Icon name="check" />
+                Everything is above its reorder threshold.
+              </p>
             )}
-          </div>
+          </article>
         ))}
       </section>
 
-      <div className="filter-bar">
-        <select
-          value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value)}
-          aria-label="Filter by category"
-        >
-          <option value="all">All categories</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-
-        <label className="checkbox-filter">
+      <div className="toolbar">
+        <fieldset className="filter-group">
+          <legend className="sr-only">Filter by category</legend>
+          <div className="chips">
+            {['all', ...categories].map((c) => (
+              <label className="chip" key={c}>
+                <input
+                  type="radio"
+                  name="inv-cat"
+                  value={c}
+                  checked={filters.category === c}
+                  onChange={() => setFilters((f) => ({ ...f, category: c }))}
+                />
+                <span>{c === 'all' ? 'All categories' : c}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <label className="switch">
           <input
             type="checkbox"
-            checked={lowStockOnly}
-            onChange={(e) => setLowStockOnly(e.target.checked)}
+            id="inv-low"
+            role="switch"
+            checked={filters.lowStockOnly}
+            onChange={(e) => {
+              const lowStockOnly = e.target.checked
+              setFilters((f) => ({ ...f, lowStockOnly }))
+            }}
           />
+          <span className="switch-ui" aria-hidden="true" />
           Low stock only
         </label>
       </div>
 
-      <div className="panel table-panel">
-        {visibleProducts.length === 0 ? (
-          <div className="empty-state">
-            <h3>No products match these filters</h3>
-            <p>Try a different category or clear the low stock filter.</p>
-          </div>
-        ) : (
-          <div className="table-scroll" tabIndex={0} aria-label="Inventory table">
-            <table>
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Category</th>
-                <th>Warehouse</th>
-                <th>Current stock</th>
-                <th>Reorder threshold</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleProducts.map((product) => {
-                const status = getStockStatus(product)
-                return (
-                  <tr key={product.id}>
-                    <td>{product.name}</td>
-                    <td>{product.category}</td>
-                    <td>{warehouseName(product.warehouseId)}</td>
-                    <td>{product.currentStock}</td>
-                    <td>{product.reorderThreshold}</td>
-                    <td>
-                      <StatusBadge
-                        status={status}
-                        label={getStockStatusLabel(status)}
-                      />
-                    </td>
+      <p className="result-count" aria-live="polite">
+        Showing {matchCount} of {products.length} products
+      </p>
+
+      <div ref={panelRef}>
+        <Fragment key={shown.key}>
+          {visibleProducts.length === 0 ? (
+            <EmptyState
+              title="No products match these filters"
+              hint="Try a different category or clear the low stock filter."
+            />
+          ) : (
+            <div className="table-scroll" tabIndex={0} aria-label="Inventory table">
+              <table className="ledger">
+                <thead>
+                  <tr>
+                    <th scope="col">Product</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Warehouse</th>
+                    <th scope="col" className="num">
+                      Current stock
+                    </th>
+                    <th scope="col" className="num">
+                      Reorder threshold
+                    </th>
+                    <th scope="col">Status</th>
                   </tr>
-                )
-              })}
-            </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {visibleProducts.map((product) => {
+                    const status = getStockStatus(product)
+                    const fill = Math.min(
+                      1,
+                      Math.max(
+                        0,
+                        product.currentStock /
+                          Math.max(product.reorderThreshold * 2, 1),
+                      ),
+                    )
+                    return (
+                      <tr key={product.id}>
+                        <td>
+                          <span className="p-name">{product.name}</span>
+                        </td>
+                        <td>{product.category}</td>
+                        <td>{warehouseName(product.warehouseId)}</td>
+                        <td className="num">
+                          <span className="stock-cell">
+                            <b>{product.currentStock}</b>
+                            <span
+                              className={`meter meter--${status}`}
+                              style={{ '--v': fill } as CSSProperties}
+                              aria-hidden="true"
+                            >
+                              <i />
+                            </span>
+                          </span>
+                        </td>
+                        <td className="num">{product.reorderThreshold}</td>
+                        <td>
+                          <StatusBadge status={status} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Fragment>
       </div>
     </>
   )
