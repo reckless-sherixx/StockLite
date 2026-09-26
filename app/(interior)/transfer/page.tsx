@@ -1,19 +1,21 @@
-import DashboardShell from '@/components/DashboardShell'
+import type { Metadata } from 'next'
+import SheetHead from '@/components/SheetHead'
 import TransferForm from '@/components/TransferForm'
+import { sectionById } from '@/components/sections'
 import { products, warehouses } from '@/lib/seed-data'
 
 export const dynamic = 'force-dynamic'
 
+export const metadata: Metadata = { title: sectionById('transfer').floor }
+
 export default function TransferPage() {
   return (
-    <DashboardShell>
-      <div className="page-header">
-        <div>
-          <h1>Warehouse Transfer</h1>
-          <p>Move stock from one warehouse to another.</p>
-        </div>
-      </div>
+    <>
+      <SheetHead
+        title="Warehouse Transfer"
+        sub="Move stock from one warehouse to another."
+      />
       <TransferForm products={products} warehouses={warehouses} />
-    </DashboardShell>
+    </>
   )
 }
